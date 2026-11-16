@@ -1,44 +1,131 @@
--- Auto Unbox AFK
--- Detecta caixas com ProximityPrompt e interage automaticamente
+-- Auto Unbox AFK v2 (com GUI)
 
-local RunService = game:GetService("RunService")
 local player = game.Players.LocalPlayer
 local character = player.Character or player.CharacterAdded:Wait()
 local rootPart = character:WaitForChild("HumanoidRootPart")
 
-local COOLDOWN = 5 -- segundos entre cada unbox (ajuste se necessário)
-local MAX_DISTANCE = 100 -- distância máxima pra detectar a caixa
+local COOLDOWN = 5
+local MAX_DISTANCE = 150
+
+-- Nomes que identificam uma caixa (ajuste se precisar)
+local BOX_KEYWORDS = {"Box", "Caixa", "Tiny", "Small", "Medium", "Large", "Epic", "Legendary"}
+
+local running = false
+
+-- ===== GUI =====
+local gui = Instance.new("ScreenGui")
+gui.Name = "AutoUnboxGUI"
+gui.ResetOnSpawn = false
+gui.Parent = player:WaitForChild("PlayerGui")
+
+local btn = Instance.new("TextButton")
+btn.Name = "ToggleBtn"
+btn.Size = UDim2.new(0, 120, 0, 40)
+btn.Position = UDim2.new(1, -130, 0, 10)
+btn.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+btn.TextColor3 = Color3.fromRGB(255, 255, 255)
+btn.Text = "▶ Iniciar"
+btn.Font = Enum.Font.GothamBold
+btn.TextSize = 16
+btn.Parent = gui
+
+local corner = Instance.new("UICorner")
+corner.CornerRadius = UDim.new(0, 8)
+corner.Parent = btn
+
+local status = Instance.new("TextLabel")
+status.Name = "Status"
+status.Size = UDim2.new(0, 120, 0, 20)
+status.Position = UDim2.new(1, -130, 0, 52)
+status.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+status.TextColor3 = Color3.fromRGB(150, 150, 150)
+status.Text = "Desligado"
+status.Font = Enum.Font.Gotham
+status.TextSize = 12
+status.BackgroundTransparency = 0.3
+status.Parent = gui
+
+local statusCorner = Instance.new("UICorner")
+statusCorner.CornerRadius = UDim.new(0, 4)
+statusCorner.Parent = status
+
+btn.MouseButton1Click:Connect(function()
+    running = not running
+    btn.Text = running and "■ Parar" or "▶ Iniciar"
+    status.Text = running and "Rodando..." or "Desligado"
+    status.TextColor3 = running and Color3.fromRGB(100, 255, 100) or Color3.fromRGB(150, 150, 150)
+end)
+
+-- ===== Lógica =====
+local function isBox(part)
+    if not part or not part:IsA("BasePart") then return false end
+    local name = part.Name:lower()
+    for _, kw in ipairs(BOX_KEYWORDS) do
+        if name:find(kw:lower()) then return true end
+    end
+    return false
+end
 
 local function findNearestBox()
-    local nearestPrompt = nil
+    local nearestPart = nil
     local nearestDist = math.huge
 
     for _, obj in pairs(workspace:GetDescendants()) do
-        if obj:IsA("ProximityPrompt") then
-            local part = obj.Parent
-            if part and part:IsA("BasePart") then
-                local dist = (rootPart.Position - part.Position).Magnitude
-                if dist < nearestDist and dist < MAX_DISTANCE then
-                    nearestDist = dist
-                    nearestPrompt = obj
-                end
+        if obj:IsA("BasePart") and isBox(obj) then
+            local dist = (rootPart.Position - obj.Position).Magnitude
+            if dist < nearestDist and dist < MAX_DISTANCE then
+                nearestDist = dist
+                nearestPart = obj
             end
         end
     end
-
-    return nearestPrompt
+    return nearestPart
 end
 
-while true do
-    local prompt = findNearestBox()
-
-    if prompt and not prompt.HoldPrompt then
-        prompt:Trigger()
-        wait(COOLDOWN)
-    elseif prompt and prompt.HoldPrompt then
-        prompt:Hold(0.5)
-        wait(COOLDOWN)
-    else
-        wait(1) -- não achou caixa, tenta de novo
+local function tryInteract(part)
+    -- 1) ProximityPrompt
+    for _, child in pairs(part:GetChildren()) do
+        if child:IsA("ProximityPrompt") then
+            child:Trigger()
+            return true
+        end
     end
-end   
+
+    -- 2) ClickDetector
+    for _, child in pairs(part:GetChildren()) do
+        if child:IsA("ClickDetector") then
+            -- Simula clique
+            local mouse = player:GetMouse()
+            mouse:Click()
+            return true
+        end
+    end
+
+    return false
+end
+
+-- Loop principal
+spawn(function()
+    while true do
+        if not running then
+            wait(0.5)
+        else
+            -- Re-fetch character (re-spawn)
+            character = player.Character
+            if character then
+                rootPart = character:WaitForChild("HumanoidRootPart")
+            end
+
+            local box = findNearestBox()
+            if box then
+                status.Text = "📦 " .. box.Name
+                if tryInteract(box) then
+                    wait(COOLDOWN)
+                end
+            else
+                status.Text = "Buscando..."
+                wait(1)
+            end
+        end
+    end
+end)   
