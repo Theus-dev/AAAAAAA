@@ -1,124 +1,44 @@
+-- Auto Unbox AFK
+-- Detecta caixas com ProximityPrompt e interage automaticamente
 
--- NEXO TOOLKIT | SetTP
--- LocalScript para Roblox Studio
--- Coloque em StarterPlayerScripts
+local RunService = game:GetService("RunService")
+local player = game.Players.LocalPlayer
+local character = player.Character or player.CharacterAdded:Wait()
+local rootPart = character:WaitForChild("HumanoidRootPart")
 
-local Players = game:GetService("Players")
-local player = Players.LocalPlayer
+local COOLDOWN = 5 -- segundos entre cada unbox (ajuste se necessário)
+local MAX_DISTANCE = 100 -- distância máxima pra detectar a caixa
 
-local savedA = nil
-local savedB = nil
+local function findNearestBox()
+    local nearestPrompt = nil
+    local nearestDist = math.huge
 
-local gui = Instance.new("ScreenGui")
-gui.Name = "NEXO_SetTP"
-gui.ResetOnSpawn = false
-gui.Parent = player:WaitForChild("PlayerGui")
-
-local frame = Instance.new("Frame")
-frame.Size = UDim2.fromOffset(250, 230)
-frame.Position = UDim2.new(0.5, -125, 0.5, -115)
-frame.BackgroundColor3 = Color3.fromRGB(17, 24, 39)
-frame.BorderSizePixel = 0
-frame.Parent = gui
-
-Instance.new("UICorner", frame).CornerRadius =
-    UDim.new(0, 12)
-
-local title = Instance.new("TextLabel")
-title.Size = UDim2.new(1, 0, 0, 42)
-title.BackgroundColor3 = Color3.fromRGB(30, 64, 120)
-title.Text = "NEXO | SETTP"
-title.TextColor3 = Color3.new(1,1,1)
-title.Font = Enum.Font.GothamBold
-title.TextSize = 18
-title.Parent = frame
-
-local status = Instance.new("TextLabel")
-status.Size = UDim2.new(1, -20, 0, 30)
-status.Position = UDim2.fromOffset(10, 45)
-status.BackgroundTransparency = 1
-status.Text = "Aguardando posição..."
-status.TextColor3 = Color3.fromRGB(190,210,235)
-status.TextSize = 12
-status.Parent = frame
-
-local function createButton(text, y, callback)
-    local button = Instance.new("TextButton")
-    button.Size = UDim2.new(1, -20, 0, 34)
-    button.Position = UDim2.fromOffset(10, y)
-    button.BackgroundColor3 = Color3.fromRGB(37, 99, 170)
-    button.Text = text
-    button.TextColor3 = Color3.new(1,1,1)
-    button.Font = Enum.Font.GothamBold
-    button.TextSize = 13
-    button.Parent = frame
-
-    Instance.new("UICorner", button).CornerRadius =
-        UDim.new(0, 7)
-
-    button.Activated:Connect(callback)
-end
-
-local function getRoot()
-    local character = player.Character
-    return character and character:FindFirstChild("HumanoidRootPart")
-end
-
-local function savePosition(which)
-    local root = getRoot()
-    if not root then
-        status.Text = "Personagem não encontrado."
-        return
+    for _, obj in pairs(workspace:GetDescendants()) do
+        if obj:IsA("ProximityPrompt") then
+            local part = obj.Parent
+            if part and part:IsA("BasePart") then
+                local dist = (rootPart.Position - part.Position).Magnitude
+                if dist < nearestDist and dist < MAX_DISTANCE then
+                    nearestDist = dist
+                    nearestPrompt = obj
+                end
+            end
+        end
     end
 
-    if which == "A" then
-        savedA = root.CFrame
+    return nearestPrompt
+end
+
+while true do
+    local prompt = findNearestBox()
+
+    if prompt and not prompt.HoldPrompt then
+        prompt:Trigger()
+        wait(COOLDOWN)
+    elseif prompt and prompt.HoldPrompt then
+        prompt:Hold(0.5)
+        wait(COOLDOWN)
     else
-        savedB = root.CFrame
+        wait(1) -- não achou caixa, tenta de novo
     end
-
-    status.Text = "Posição " .. which .. " salva!"
-end
-
-local function teleport(which)
-    local root = getRoot()
-    local destination = which == "A" and savedA or savedB
-
-    if not root then
-        status.Text = "Personagem não encontrado."
-        return
-    end
-
-    if not destination then
-        status.Text = "Salve a posição " .. which .. " primeiro."
-        return
-    end
-
-    -- Solicita o teleporte ao servidor do próprio jogo.
-    local event = game.ReplicatedStorage:FindFirstChild("NEXO_SetTP_Request")
-
-    if event and event:IsA("RemoteEvent") then
-        event:FireServer(destination)
-        status.Text = "Solicitação enviada: " .. which
-    else
-        status.Text = "Configure o RemoteEvent do seu jogo."
-    end
-end
-
-createButton("SALVAR POSIÇÃO A", 82, function()
-    savePosition("A")
-end)
-
-createButton("SALVAR POSIÇÃO B", 122, function()
-    savePosition("B")
-end)
-
-createButton("IR PARA A", 162, function()
-    teleport("A")
-end)
-
-createButton("IR PARA B", 202, function()
-    teleport("B")
-end)
-
-print("[NEXO] SetTP carregado.")
+end   
